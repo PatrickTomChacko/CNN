@@ -1,0 +1,164 @@
+---
+title: "ML-AI Assn3"
+author: "Patrick Tom Chacko 22200149"
+date: "2023-04-24"
+output: html_document
+---
+
+## Indoor scene recognition
+
+Let us plot some of the available images from training dataset
+```{r, fig.height= c(20,10)}
+library('keras')
+library("jpeg")
+library('tfruns')
+library("reticulate")
+path <- getwd()
+path <- paste0(path,"/data_indoor")
+
+#list.files(path = path)
+path_train = paste0(path,"/train")
+fold_names <- list.files(path = path_train)
+
+
+par(mfrow = c(length(fold_names),3), mar=c(0.5,0.5,0.5,0.5))
+for (scene in fold_names) {
+ path_scene =  paste0(path_train,"/",scene)
+  set = sample(list.files(path=path_scene),3)
+  
+  for (i in set) {
+    img = readJPEG(paste0(path_scene,"/",i))
+    plot(0:1, 0:1, type = "n", ann = FALSE, axes = FALSE)
+    rasterImage(img, 0, 0, 1, 1)
+  }
+  
+ }
+```
+```{r}
+for (loc in fold_names) {
+  print(loc)
+  print(length(list.files(paste0(path_train,"/",loc))))
+}
+```
+
+```{r}
+val_datagen <- train_datagen <- image_data_generator(rescale = 1/255)
+train_generator <- flow_images_from_directory(
+path_train,
+train_datagen,
+target_size = c(64, 64),
+batch_size = 20
+)
+
+path_val = paste0(path,"/validation") 
+
+val_generator <- flow_images_from_directory(
+path_val,
+val_datagen,
+target_size = c(64, 64),
+batch_size = 20
+)
+
+```
+
+```{r}
+#Let us make a grid of parameters
+dropout_set <- c(0, 0.3, 0.4, 0.5)
+lambda_set <- c(0, exp( seq(-6, -4, length = 9) ))
+lr_set <- c(0.001, 0.002, 0.005, 0.01)
+bs_set <- c(0.005, 0.01, 0.02, 0.03)*1713
+```
+
+```{r}
+models_grid <- tuning_run("Model_assn3_ML_AI.R",
+runs_dir = "Assn3grid_model",
+flags = list(
+dropout = dropout_set,
+lambda = lambda_set,
+lr = lr_set,
+bs = bs_set
+),
+sample = 0.01)
+```
+
+```{r}
+#Model written as seperate file
+model1 <- keras_model_sequential() %>%
+  layer_dense(units = 256, input_shape = c(64,64,3), activation = "relu", name = "layer_1",
+              kernel_regularizer = regularizer_l2(FLAGS$lambda)) %>%
+  layer_dropout(rate = FLAGS$dropout) %>%
+  layer_dense(units = 128, activation = "relu", name = "layer_2",
+              kernel_regularizer = regularizer_l2(FLAGS$lambda)) %>%
+  layer_dropout(rate = FLAGS$dropout) %>%
+  layer_dense(units = 64, activation = "relu", name = "layer_3",
+              kernel_regularizer = regularizer_l2(FLAGS$lambda)) %>%
+  layer_dropout(rate = FLAGS$dropout) %>%
+  layer_dense(units = 10, activation = "softmax", name = "layer_out") %>%
+  compile(loss = "categorical_crossentropy", metrics = "accuracy",
+          optimizer = optimizer_adam(learning_rate = FLAGS$lr),
+  )
+
+
+fit1 <- model %>% fit(
+train_generator,
+steps_per_epoch = 20,
+epochs = 50,
+validation_data = val_generator,
+validation_steps = 50
+)
+```
+
+```{r}
+library(keras)
+model2 <- keras_model_sequential() %>%
+#
+# convolutional layers
+layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu",
+input_shape = c(64, 64, 3)) %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+layer_conv_2d(filters = 128, kernel_size = c(3, 3), activation = "relu") %>%
+layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+#
+# fully connected layers
+layer_flatten() %>%
+layer_dense(units = 512, activation = "relu") %>%
+layer_dense(units = 10, activation = "softmax") %>%
+#
+# compile
+compile(
+  loss = "categorical_crossentropy",
+metrics = "accuracy",
+optimizer = optimizer_rmsprop(learning_rate = 0.0001)
+)
+```
+
+```{r}
+library(reticulate)
+fit <- model2 %>% fit(
+train_generator,
+steps_per_epoch = 20,
+epochs = 50,
+validation_data = val_generator,
+validation_steps = 25
+)
+```
+```{r}
+library(reticulate)
+
+# Load the PIL module in Python
+py <- import("PIL.Image")
+
+# Open an image file
+img <- py$open(file.choose())
+
+# Display the image
+img$show()
+
+```
+
+
+
